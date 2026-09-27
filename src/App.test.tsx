@@ -21,7 +21,8 @@ const dataset: PillDataset = {
 };
 
 beforeEach(() => {
-  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(dataset))));
+  vi.stubGlobal('fetch', vi.fn(async (url: string) =>
+    new Response(JSON.stringify(String(url).startsWith('/api/permit/') ? { found: false } : dataset))));
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -68,5 +69,6 @@ describe('App', () => {
     expect(within(dialog).getByRole('link', { name: /의약품안전나라/ })).toHaveAttribute(
       'href', 'https://nedrug.mfds.go.kr/pbp/CCBBB01/getItemDetail?itemSeq=c',
     );
+    expect(await within(dialog).findByText(/이 약의 설명을 찾지 못했어요/)).toBeInTheDocument();
   });
 });

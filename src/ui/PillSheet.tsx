@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import type { Pill } from '../types';
 import { nedrugUrl } from '../lib/options';
 import { Imprint } from './PillCard';
+import { PermitView } from './PermitView';
 
 function Row({ k, v }: { k: string; v: string }) {
   if (!v) return null;
@@ -47,6 +48,8 @@ export function PillSheet({ pill, onClose }: { pill: Pill; onClose: () => void }
           <Row k="성상" v={pill.chart} />
           <Row k="분류" v={pill.className} />
         </div>
+
+        <PermitView seq={pill.seq} />
 
         <a className="btn btn-primary btn-block ext" href={nedrugUrl(pill.seq)} target="_blank" rel="noreferrer">
           의약품안전나라에서 자세히 보기
