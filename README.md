@@ -43,14 +43,35 @@ npm run dev      # 화면      → http://localhost:5173
 | `npm run dev` | 화면 개발 서버 (Vite). `/api`는 8788로 프록시 |
 | `npm run server` | API 서버 (Express, 파일이 바뀌면 재시작) |
 | `npm run data` | 식약처 낱알식별 CSV를 새로 받아 `public/pills.json`을 다시 만듭니다. 로컬 CSV를 쓰려면 `npm run data -- ./파일.csv` |
-| `npm test` | 테스트 79개 (화면·검색·서버·파서) |
+| `npm test` | 테스트 (화면·검색·서버·파서) |
 | `npm run build` | 타입 검사 후 `dist/`에 정적 파일 빌드 |
+| `npm run sample:setup` | 사진 판독 평가용 알약 사진 샘플을 받아 `sample_img/`에 풉니다 (아래 참고) |
+| `npm run eval:photos` | 샘플 사진으로 사진 판독 정확도를 잽니다 → `eval/results/` |
+
+## 사진 판독 평가
+
+실제로 촬영한 알약 사진으로 "사진으로 찾기"의 정확도를 잽니다.
+
+```bash
+npm run sample:setup    # 처음 한 번: 사진 샘플 받기 (약 515MB)
+npm run eval:photos     # 4장마다 1장(230장) 평가. 전부는 -- --every 1
+```
+
+- **사진 출처**: 식약처·약학정보원 「[인공지능 개발을 위한 알약 이미지 데이터](https://www.data.go.kr/data/15112582/fileData.do)」 샘플 (이용허락범위 제한 없음). 22개 품목을 휴대폰으로 돌려 가며 앞·뒷면을 찍은 사진 920장(배경 제거)입니다.
+- **정답표**: `eval/kpic-sample-labels.csv`. 샘플에는 폴더(식별표시 접수번호)와 품목의 대응표가 없어서, 사진과 식약처 알약 사진을 직접 대조해 만들었습니다. 1개 품목은 "불확실"로 표시해 전체 수치에서 뺍니다.
+- **필요한 것**: `server/.env`의 `GEMINI_API_KEY`, 그리고 `.egg` 압축을 풀 [반디집](https://www.bandisoft.com/bandizip/) (Windows: `winget install Bandisoft.Bandizip`). 반디집이 없으면 `.cache/sample_img.Egg`를 반디집·알집으로 `sample_img/`에 직접 풀어도 됩니다.
+- 사진(`sample_img/`), 받은 압축 파일(`.cache/`), 평가 결과(`eval/results/`)는 용량 때문에 git에 올리지 않습니다.
+- **최근 결과** (2026-09-27, 정답 확실 220장): 정답 1위 40% · 5위 안 45%. 글자가 새겨진 앞면 사진만 보면 1위 58%. 방법과 해석은 [설계 문서 6.5](docs/design.md)에 있습니다.
 
 ## 폴더 구조
 
 ```
 pill-lens/
-├─ scripts/buildPills.ts     낱알식별 CSV → public/pills.json
+├─ scripts/
+│  ├─ buildPills.ts          낱알식별 CSV → public/pills.json
+│  ├─ setupSample.ts         평가용 사진 샘플 받기·풀기 → sample_img/
+│  └─ evalPhotos.ts          사진 판독 정확도 평가 → eval/results/
+├─ eval/kpic-sample-labels.csv  평가 정답표 (샘플 폴더 → 알약)
 ├─ public/pills.json         알약 27,456개 (빌드 결과, 약 12.5MB / gzip 1.7MB)
 ├─ src/                      화면 (React + TypeScript)
 │  ├─ App.tsx                검색 상태, 사진 판독 흐름, 결과 목록
@@ -90,7 +111,7 @@ pill-lens/
 
 ## 한계
 
-- **사진 판독은 실제 휴대폰 사진으로 충분히 시험하지 않았습니다.** 식약처 알약 사진을 잘라 만든 가상 사진 12장으로만 확인했습니다. 빛 반사나 흐림, 음각 글자는 더 어려울 수 있습니다.
+- **사진 판독은 배경이 제거된 촬영 사진으로 평가했습니다** ([사진 판독 평가](#사진-판독-평가)). 책상·손 같은 배경이 있는 실제 사용 사진은 아직 평가하지 않았습니다.
 - 표본 60개 기준으로 약 12%는 허가정보에 없어 설명 대신 안내 문구가 나옵니다 (허가 취소·변경 품목 등).
 - 알약 데이터가 12.5MB라 휴대폰 데이터로 처음 열 때 느릴 수 있습니다 (배포 시 gzip 압축으로 1.7MB).
 - API 서버는 빌드된 화면(`dist/`)을 서빙하지 않습니다. 배포하려면 정적 호스팅과 API 서버를 따로 두거나, 서버에 정적 서빙을 추가해야 합니다.

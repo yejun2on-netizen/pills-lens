@@ -8,6 +8,14 @@ export interface PillQuery {
   colors: string[];
   forms: PillForm[];
   lines: ScoreLine[];
+  /** 사진 판독처럼 확실하지 않은 조건. 거르지 않고 맞는 알약을 앞으로만 당긴다. */
+  prefer?: Preference;
+}
+
+export interface Preference {
+  shapes: string[];
+  forms: PillForm[];
+  colors: string[];
 }
 
 export const EMPTY_QUERY: PillQuery = { text: '', shapes: [], colors: [], forms: [], lines: [] };
@@ -78,10 +86,35 @@ function nameScore(words: string[], p: IndexedPill): number {
 const NAME_OFFSET = 100;
 
 /**
+ * 사람도 AI도 자주 헷갈리는 모양 묶음.
+ * 실제 촬영 사진 평가에서 AI의 모양 오답 22건이 모두 장방형을 타원형으로 본 것이었다.
+ */
+const SIMILAR_SHAPES = [['장방형', '타원형']];
+
+export function similarShapes(shape: string): string[] {
+  return SIMILAR_SHAPES.find((g) => g.includes(shape)) ?? [shape];
+}
+
+/**
+ * 선호 조건에 안 맞을 때 더하는 점수 (낮을수록 앞). 식별문자 점수(정확 0 · 앞부분 1 · 포함 2)와 같은 눈금이라,
+ * 글자가 똑같은 알약끼리는 모양·제형·색이 맞는 쪽이 앞선다.
+ */
+function preferencePenalty(p: IndexedPill, pref: Preference): number {
+  let s = 0;
+  if (pref.shapes.length && !pref.shapes.includes(p.shape)) {
+    s += pref.shapes.some((x) => similarShapes(x).includes(p.shape)) ? 1 : 2;
+  }
+  if (pref.forms.length && !pref.forms.includes(p.form)) s += 2;
+  if (pref.colors.length && !pref.colors.some((c) => p.colors.includes(c))) s += 1;
+  return s;
+}
+
+/**
  * 조건에 맞는 알약을 잘 맞는 순서로 돌려준다.
  * - 글자: 앞/뒤 식별문자에 맞거나, 제품명에 들어 있으면 통과 (식별문자 일치가 먼저)
  * - 모양·제형·분할선: 고른 것 중 하나라도 맞으면 통과
  * - 색상: 고른 색을 모두 가진 알약만 (두 가지 색 캡슐을 좁히기 위해)
+ * - prefer(선호): 거르지 않고 순서에만 반영
  */
 export function searchPills(pills: IndexedPill[], q: PillQuery): IndexedPill[] {
   if (isEmptyQuery(q)) return [];
@@ -106,6 +139,7 @@ export function searchPills(pills: IndexedPill[], q: PillQuery): IndexedPill[] {
         score = NAME_OFFSET + nm;
       }
     }
+    if (q.prefer) score += preferencePenalty(p, q.prefer);
     scored.push({ p, score });
   }
 
@@ -115,19 +149,17 @@ export function searchPills(pills: IndexedPill[], q: PillQuery): IndexedPill[] {
 
 /**
  * 사진 판독 결과로 검색 조건을 만든다.
- * - 색은 AI와 데이터의 색 이름이 자주 달라(시험에서 12개 중 5개) 조건에 넣지 않는다.
- *   색까지 넣으면 맞는 알약이 걸러져 버릴 수 있다.
- * - 결과가 0개면 모양 → 제형 순으로 조건을 풀어 가며 결과가 나오는 조건을 고른다.
+ * - 글자를 읽었으면 **글자로만 거르고**, 모양·제형·색은 순서에만 반영한다(prefer).
+ *   실제 촬영 사진 평가에서 모양을 잘못 읽어(장방형→타원형) 맞는 알약이 걸러지는 일이 많았고,
+ *   색은 이름이 데이터와 자주 달라 거르는 조건으로 쓸 수 없다.
+ * - 글자가 없거나 읽은 글자로 결과가 없으면, 모양(비슷한 모양 포함)·제형으로 거른다. 이때 relaxed.
  */
 export function queryFromGuess(pills: IndexedPill[], g: PhotoGuess): { query: PillQuery; relaxed: boolean } {
-  const shapes = g.shape ? [g.shape] : [];
-  const forms = g.form ? [g.form] : [];
-  const candidates: PillQuery[] = [
-    { ...EMPTY_QUERY, text: g.text, shapes, forms },
-    { ...EMPTY_QUERY, text: g.text, forms },
-    { ...EMPTY_QUERY, text: g.text },
-    { ...EMPTY_QUERY, shapes, forms },
-  ].filter((q) => !isEmptyQuery(q));
-  const i = candidates.findIndex((q) => searchPills(pills, q).length > 0);
-  return i < 0 ? { query: candidates[0] ?? EMPTY_QUERY, relaxed: false } : { query: candidates[i], relaxed: i > 0 };
+  const prefer: Preference = { shapes: g.shape ? [g.shape] : [], forms: g.form ? [g.form] : [], colors: g.colors };
+  const byText: PillQuery = { ...EMPTY_QUERY, text: g.text, prefer };
+  if (g.text && searchPills(pills, byText).length > 0) return { query: byText, relaxed: false };
+
+  const byLook: PillQuery = { ...EMPTY_QUERY, shapes: g.shape ? similarShapes(g.shape) : [], forms: g.form ? [g.form] : [], prefer };
+  if (!isEmptyQuery(byLook) && searchPills(pills, byLook).length > 0) return { query: byLook, relaxed: !!g.text };
+  return { query: g.text ? byText : byLook, relaxed: false };
 }

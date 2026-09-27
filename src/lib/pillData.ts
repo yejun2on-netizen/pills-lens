@@ -43,9 +43,12 @@ export function deriveLine(front: string, back: string, lineFront: string, lineB
 
 const IMPRINT_WORDS = /십자분할선|분할선|마크/g;
 
-/** 식별문자 비교용 정규화: 분할선/마크 표기와 기호를 지우고 대문자로. "D-W", "D.W" → "DW" */
+/**
+ * 식별문자 비교용 정규화: 분할선/마크 표기와 기호를 지우고 대문자로. "D-W", "D.W" → "DW"
+ * 원본은 A를 그리스 문자 Λ(또는 ∧)로 적은 경우가 많다(873개, 예: ΛJ2). 지우지 않고 A로 읽는다.
+ */
 export function normalizeImprint(s: string): string {
-  return s.replace(IMPRINT_WORDS, '').toUpperCase().replace(/[^0-9A-Z가-힣]/g, '');
+  return s.replace(IMPRINT_WORDS, '').replace(/[Λ∧]/g, 'A').toUpperCase().replace(/[^0-9A-Z가-힣]/g, '');
 }
 
 /** 화면 표시용: "V분할선T" → "V | T", "마크NVT" → "(마크) NVT" */

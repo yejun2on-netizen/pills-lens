@@ -40,17 +40,18 @@ function takePhoto(container: HTMLElement) {
 }
 
 describe('App — 사진으로 찾기', () => {
-  it('사진을 읽어 글자·모양·제형을 채우고 결과를 보여준다 (색은 넣지 않음)', async () => {
+  it('사진에서 읽은 글자로 찾고, 모양·색은 거르지 않는다', async () => {
     const { container } = render(<App />);
     await screen.findByText('조건을 골라 주세요');
     takePhoto(container);
 
     expect(await screen.findByText('사진에서 읽은 내용으로 찾았어요')).toBeInTheDocument();
+    expect(screen.getByText(/새겨진 글자로 찾고/)).toBeInTheDocument();
     expect(screen.getByText('빨강캡슐')).toBeInTheDocument();
     expect(screen.queryByText('노랑정')).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText(/예: YH/)).toHaveValue('DW');
     const filters = screen.getByRole('region', { name: '알약 검색 조건' });
-    expect(within(filters).getByRole('button', { name: /장방/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(filters).getByRole('button', { name: /장방/ })).toHaveAttribute('aria-pressed', 'false');
     expect(within(filters).getByRole('button', { name: /빨강/ })).toHaveAttribute('aria-pressed', 'false');
 
     fireEvent.click(screen.getByRole('button', { name: '색도 조건에 넣기' }));

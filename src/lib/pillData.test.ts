@@ -67,6 +67,11 @@ describe('normalizeImprint / displayImprint', () => {
     expect(normalizeImprint('마크NVT')).toBe('NVT');
     expect(normalizeImprint('ID·5')).toBe('ID5');
   });
+  it('A 대신 쓰인 그리스 문자 Λ·∧는 A로 읽는다 (예: 세바코에이치씨티정 ΛJ2)', () => {
+    expect(normalizeImprint('ΛJ2')).toBe('AJ2');
+    expect(normalizeImprint('CΛJ')).toBe('CAJ');
+    expect(normalizeImprint('∧B')).toBe('AB');
+  });
   it('표시용으로는 분할선을 | 로, 마크를 (마크)로 보여준다', () => {
     expect(displayImprint('V분할선T')).toBe('V | T');
     expect(displayImprint('마크NVT')).toBe('(마크) NVT');

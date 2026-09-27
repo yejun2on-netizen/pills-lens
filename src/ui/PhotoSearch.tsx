@@ -21,17 +21,21 @@ function Read({ guess, relaxed, onAddColors }: { guess: PhotoGuess; relaxed: boo
     guess.text && ['글자', guess.text],
     guess.shape && ['모양', guess.shape],
     guess.form && ['제형', guess.form],
+    guess.colors.length > 0 && ['색', guess.colors.join('·')],
   ].filter(Boolean) as [string, string][];
+  const byText = !!guess.text && !relaxed;
   return (
     <div className="photo-read">
       <p className="photo-read-t">사진에서 읽은 내용으로 찾았어요</p>
       <div className="photo-tags">
         {items.map(([k, v]) => <span key={k} className="photo-tag"><em>{k}</em>{v}</span>)}
       </div>
-      {relaxed && <p className="photo-note">읽은 조건 그대로는 맞는 알약이 없어서 조건 일부를 뺐어요.</p>}
+      {byText && <p className="photo-note">새겨진 글자로 찾고, 모양·제형·색이 맞는 알약을 앞에 보여줘요.</p>}
+      {relaxed && <p className="photo-note">읽은 글자로는 맞는 알약이 없어서 모양·제형으로 찾았어요.</p>}
+      {!guess.text && <p className="photo-note"><b>글자를 읽지 못해</b> 모양·제형으로 찾았어요. 글자가 새겨진 면을 찍으면 훨씬 정확해요.</p>}
       {guess.colors.length > 0 && (
         <p className="photo-note">
-          AI가 본 색은 <b>{guess.colors.join('·')}</b>이에요. 색 이름은 데이터와 다를 수 있어 조건에 넣지 않았어요.
+          색은 이름이 데이터와 다를 수 있어 거르지 않고 순서에만 반영했어요.
           <button type="button" className="linkish" onClick={onAddColors}>색도 조건에 넣기</button>
         </p>
       )}

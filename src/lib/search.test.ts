@@ -106,22 +106,45 @@ describe('queryFromGuess', () => {
   ]);
   const g = (over: Partial<PhotoGuess>): PhotoGuess => ({ text: '', shape: '', colors: [], form: '', line: '', ...over });
 
-  it('글자·모양·제형을 넣고 색은 넣지 않는다', () => {
+  it('글자로만 거르고 모양·제형·색은 선호(순서)로 넘긴다', () => {
     expect(queryFromGuess(list, g({ text: 'MQTDW', shape: '장방형', form: '경질캡슐', colors: ['빨강'] }))).toEqual({
-      query: { ...EMPTY_QUERY, text: 'MQTDW', shapes: ['장방형'], forms: ['경질캡슐'] },
+      query: { ...EMPTY_QUERY, text: 'MQTDW', prefer: { shapes: ['장방형'], forms: ['경질캡슐'], colors: ['빨강'] } },
       relaxed: false,
     });
   });
 
-  it('결과가 없으면 모양부터 풀어 준다', () => {
+  it('모양을 잘못 읽어도 글자가 맞으면 맞는 알약이 걸러지지 않는다', () => {
     const r = queryFromGuess(list, g({ text: 'JW5', shape: '원형', form: '정제' }));
-    expect(r).toEqual({ query: { ...EMPTY_QUERY, text: 'JW5', forms: ['정제'] }, relaxed: true });
+    expect(r.relaxed).toBe(false);
     expect(searchPills(list, r.query).map((p) => p.seq)).toEqual(['j']);
   });
 
-  it('글자를 잘못 읽었으면 모양·제형만으로 찾는다', () => {
-    expect(queryFromGuess(list, g({ text: 'XYZ', shape: '삼각형', form: '정제' })).query)
-      .toEqual({ ...EMPTY_QUERY, shapes: ['삼각형'], forms: ['정제'] });
+  it('읽은 글자로 결과가 없으면 모양(비슷한 모양 포함)·제형으로 거른다', () => {
+    const r = queryFromGuess(list, g({ text: 'XYZ', shape: '타원형', form: '경질캡슐' }));
+    expect(r.relaxed).toBe(true);
+    expect(r.query.shapes).toEqual(['장방형', '타원형']);
+    expect(r.query.forms).toEqual(['경질캡슐']);
+    expect(searchPills(list, r.query).map((p) => p.seq)).toEqual(['k']);
+  });
+});
+
+describe('searchPills — 선호 조건(prefer)', () => {
+  // 실제 사례: HM/10은 수바스트정(원형·분홍), 몬테잘정(사각형·주황), 토바스트정(타원형·노랑)에 모두 있다.
+  const list = indexPills([
+    pill({ seq: 'su', name: '수바스트정', front: 'HM', back: '10', shape: '원형', colors: ['분홍'] }),
+    pill({ seq: 'mo', name: '몬테잘정', front: 'HM', back: '10', shape: '사각형', colors: ['주황'] }),
+    pill({ seq: 'to', name: '토바스트정', front: 'HM', back: '10', shape: '타원형', colors: ['노랑'] }),
+  ]);
+  const find = (prefer: { shapes?: string[]; colors?: string[] }) =>
+    searchPills(list, { ...EMPTY_QUERY, text: 'HM', prefer: { shapes: [], forms: [], colors: [], ...prefer } }).map((p) => p.seq);
+
+  it('거르지 않고 순서만 바꾼다', () => {
+    expect(find({})).toEqual(['mo', 'su', 'to']);
+    expect(find({ colors: ['노랑'] })).toEqual(['to', 'mo', 'su']);
+  });
+
+  it('비슷한 모양(장방형↔타원형)은 다른 모양보다 앞선다', () => {
+    expect(find({ shapes: ['장방형'] })).toEqual(['to', 'mo', 'su']);
   });
 });
 
