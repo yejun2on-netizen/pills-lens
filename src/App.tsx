@@ -1,7 +1,10 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import type { Pill, PillDataset } from './types';
-import { EMPTY_QUERY, indexPills, isEmptyQuery, searchPills, type IndexedPill, type PillQuery } from './lib/search';
+import { EMPTY_QUERY, indexPills, isEmptyQuery, queryFromGuess, searchPills, type IndexedPill, type PillQuery } from './lib/search';
+import { analyzePhoto } from './lib/api';
+import { shrinkImage } from './lib/image';
 import { SearchPanel } from './ui/SearchPanel';
+import { PhotoSearch, type PhotoState } from './ui/PhotoSearch';
 import { PillCard } from './ui/PillCard';
 import { PillSheet } from './ui/PillSheet';
 import { Disclaimer } from './ui/Disclaimer';
@@ -44,6 +47,32 @@ export default function App() {
   const results = useMemo(() => (data.state === 'ready' ? searchPills(data.pills, deferred) : []), [data, deferred]);
   useEffect(() => setLimit(PAGE), [deferred]);
 
+  const [photo, setPhoto] = useState<PhotoState>({ status: 'idle' });
+  const photoPreview = photo.status === 'idle' ? undefined : photo.preview;
+  useEffect(() => () => { if (photoPreview) URL.revokeObjectURL(photoPreview); }, [photoPreview]);
+
+  async function handlePhoto(file: File) {
+    const preview = URL.createObjectURL(file);
+    setPhoto({ status: 'reading', preview });
+    try {
+      const guess = await analyzePhoto(await shrinkImage(file));
+      if (!guess.text && !guess.shape && !guess.form) {
+        setPhoto({ status: 'error', preview, message: '사진에서 알약을 알아보지 못했어요. 알약 하나를 밝은 곳에서 가까이 찍어 주세요.' });
+        return;
+      }
+      const { query: q, relaxed } = data.state === 'ready' ? queryFromGuess(data.pills, guess) : { query: EMPTY_QUERY, relaxed: false };
+      setQuery(q);
+      setPhoto({ status: 'done', preview, guess, relaxed });
+      requestAnimationFrame(() => resultsRef.current?.scrollIntoView?.({ behavior: 'smooth' }));
+    } catch {
+      setPhoto({ status: 'error', preview, message: '사진을 읽지 못했어요. 잠시 후 다시 시도하거나 아래에서 직접 골라 주세요.' });
+    }
+  }
+
+  function addPhotoColors() {
+    if (photo.status === 'done') setQuery({ ...query, colors: photo.guess.colors });
+  }
+
   const empty = isEmptyQuery(query);
 
   return (
@@ -66,9 +95,9 @@ export default function App() {
 
       <main className="main">
         <section className="hero">
-          <p className="eyebrow">글자 · 모양 · 색으로 찾아요</p>
+          <p className="eyebrow">사진 · 글자 · 모양으로 찾아요</p>
           <h1>이 알약,<br /><span className="hl">무슨 약</span>일까요?</h1>
-          <p className="lead">알약에 새겨진 글자와 모양, 색을 고르면 식약처 데이터에서 같은 알약을 찾아드려요.</p>
+          <p className="lead">알약을 찍거나 새겨진 글자와 모양, 색을 고르면 식약처 데이터에서 같은 알약을 찾아드려요.</p>
         </section>
 
         {data.state === 'error' && (
@@ -80,6 +109,8 @@ export default function App() {
             <span>알약 데이터를 불러오지 못했어요. 새로고침해 주세요.</span>
           </div>
         )}
+
+        <PhotoSearch state={photo} onPhoto={handlePhoto} onAddColors={addPhotoColors} />
 
         <SearchPanel query={query} onChange={setQuery} />
 

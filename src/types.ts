@@ -80,3 +80,16 @@ export interface PermitInfo {
 }
 
 export type PermitResponse = { found: true; permit: PermitInfo } | { found: false };
+
+/* ------------------------------------------- 사진 판독 (서버 /api/photo) */
+
+/** AI가 알약 사진에서 읽은 값. 못 읽은 항목은 빈 값. */
+export interface PhotoGuess {
+  /** 새겨지거나 인쇄된 글자 */
+  text: string;
+  shape: string;
+  /** 참고용 — 데이터의 색 이름과 자주 달라 자동으로 조건에 넣지 않는다 */
+  colors: string[];
+  form: PillForm | '';
+  line: ScoreLine | '';
+}

@@ -1,5 +1,5 @@
-import type { Pill } from '../types';
-import { indexPills, searchPills, imprintTokens, EMPTY_QUERY } from './search';
+import type { PhotoGuess, Pill } from '../types';
+import { indexPills, searchPills, imprintTokens, queryFromGuess, EMPTY_QUERY } from './search';
 
 function pill(over: Partial<Pill>): Pill {
   return {
@@ -82,6 +82,46 @@ describe('searchPills — 제품명', () => {
 
   it('이름 검색도 다른 조건과 함께 걸린다', () => {
     expect(find({ text: '코메키나', forms: ['정제'] })).toEqual([]);
+  });
+});
+
+describe('searchPills — 헷갈리는 글자', () => {
+  const list = indexPills([
+    pill({ seq: 'z', name: '제로비정', front: 'ZO2', back: 'NU' }),
+    pill({ seq: 'w', name: '듀로셉톨캡슐', front: 'WID60', form: '경질캡슐' }),
+  ]);
+  const find = (text: string) => searchPills(list, { ...EMPTY_QUERY, text }).map((p) => p.seq);
+
+  it('O와 0, I와 1을 같게 본다 (사진 판독·입력 실수 대비)', () => {
+    expect(find('Z02')).toEqual(['z']);
+    expect(find('zo2')).toEqual(['z']);
+    expect(find('W1D60')).toEqual(['w']);
+  });
+});
+
+describe('queryFromGuess', () => {
+  const list = indexPills([
+    pill({ seq: 'k', name: '코메키나캡슐', front: 'MQTDW', shape: '장방형', form: '경질캡슐', colors: ['주황', '노랑'] }),
+    pill({ seq: 'j', name: '정우보중익기탕엑스정', front: 'JW5', shape: '삼각형', colors: ['갈색'] }),
+  ]);
+  const g = (over: Partial<PhotoGuess>): PhotoGuess => ({ text: '', shape: '', colors: [], form: '', line: '', ...over });
+
+  it('글자·모양·제형을 넣고 색은 넣지 않는다', () => {
+    expect(queryFromGuess(list, g({ text: 'MQTDW', shape: '장방형', form: '경질캡슐', colors: ['빨강'] }))).toEqual({
+      query: { ...EMPTY_QUERY, text: 'MQTDW', shapes: ['장방형'], forms: ['경질캡슐'] },
+      relaxed: false,
+    });
+  });
+
+  it('결과가 없으면 모양부터 풀어 준다', () => {
+    const r = queryFromGuess(list, g({ text: 'JW5', shape: '원형', form: '정제' }));
+    expect(r).toEqual({ query: { ...EMPTY_QUERY, text: 'JW5', forms: ['정제'] }, relaxed: true });
+    expect(searchPills(list, r.query).map((p) => p.seq)).toEqual(['j']);
+  });
+
+  it('글자를 잘못 읽었으면 모양·제형만으로 찾는다', () => {
+    expect(queryFromGuess(list, g({ text: 'XYZ', shape: '삼각형', form: '정제' })).query)
+      .toEqual({ ...EMPTY_QUERY, shapes: ['삼각형'], forms: ['정제'] });
   });
 });
 

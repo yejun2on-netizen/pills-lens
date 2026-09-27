@@ -1,4 +1,4 @@
-import type { Pill, PillForm, ScoreLine } from '../types';
+import type { PhotoGuess, Pill, PillForm, ScoreLine } from '../types';
 import { normalizeImprint } from './pillData';
 
 export interface PillQuery {
@@ -23,8 +23,16 @@ function normalizeName(s: string): string {
   return s.toUpperCase().replace(/\s+/g, '');
 }
 
+/**
+ * 눈으로도, 사진 판독으로도 자주 헷갈리는 글자를 같게 본다 (O↔0, I↔1).
+ * 사진 시험에서 "ZO2"를 "Z02"로 읽은 경우가 있었다.
+ */
+function foldImprint(s: string): string {
+  return normalizeImprint(s).replace(/O/g, '0').replace(/I/g, '1');
+}
+
 export function indexPills(pills: Pill[]): IndexedPill[] {
-  return pills.map((p) => ({ ...p, nf: normalizeImprint(p.front), nb: normalizeImprint(p.back), nn: normalizeName(p.name) }));
+  return pills.map((p) => ({ ...p, nf: foldImprint(p.front), nb: foldImprint(p.back), nn: normalizeName(p.name) }));
 }
 
 export function isEmptyQuery(q: PillQuery): boolean {
@@ -33,7 +41,7 @@ export function isEmptyQuery(q: PillQuery): boolean {
 
 /** 입력한 식별문자를 공백 기준 토큰으로 나눈다. "YH LT" → ["YH", "LT"] */
 export function imprintTokens(input: string): string[] {
-  return input.split(/\s+/).map(normalizeImprint).filter(Boolean);
+  return input.split(/\s+/).map(foldImprint).filter(Boolean);
 }
 
 /**
@@ -103,4 +111,23 @@ export function searchPills(pills: IndexedPill[], q: PillQuery): IndexedPill[] {
 
   scored.sort((a, b) => a.score - b.score || a.p.name.localeCompare(b.p.name, 'ko'));
   return scored.map((s) => s.p);
+}
+
+/**
+ * 사진 판독 결과로 검색 조건을 만든다.
+ * - 색은 AI와 데이터의 색 이름이 자주 달라(시험에서 12개 중 5개) 조건에 넣지 않는다.
+ *   색까지 넣으면 맞는 알약이 걸러져 버릴 수 있다.
+ * - 결과가 0개면 모양 → 제형 순으로 조건을 풀어 가며 결과가 나오는 조건을 고른다.
+ */
+export function queryFromGuess(pills: IndexedPill[], g: PhotoGuess): { query: PillQuery; relaxed: boolean } {
+  const shapes = g.shape ? [g.shape] : [];
+  const forms = g.form ? [g.form] : [];
+  const candidates: PillQuery[] = [
+    { ...EMPTY_QUERY, text: g.text, shapes, forms },
+    { ...EMPTY_QUERY, text: g.text, forms },
+    { ...EMPTY_QUERY, text: g.text },
+    { ...EMPTY_QUERY, shapes, forms },
+  ].filter((q) => !isEmptyQuery(q));
+  const i = candidates.findIndex((q) => searchPills(pills, q).length > 0);
+  return i < 0 ? { query: candidates[0] ?? EMPTY_QUERY, relaxed: false } : { query: candidates[i], relaxed: i > 0 };
 }

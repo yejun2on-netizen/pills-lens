@@ -1,18 +1,54 @@
 // @vitest-environment node
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
-import type { PermitInfo } from '../src/types';
-import { createApp } from './app';
+import type { PermitInfo, PhotoGuess } from '../src/types';
+import { createApp, type AppDeps } from './app';
 import { makeCache } from './cache';
 
 const permit = { seq: '201706199', name: '코메키나캡슐' } as PermitInfo;
-async function serve(loadPermit: (seq: string) => Promise<PermitInfo | null>) {
+const guess: PhotoGuess = { text: 'MQTDW', shape: '장방형', colors: ['주황', '노랑'], form: '경질캡슐', line: '없음' };
+
+async function serve(loadPermit: AppDeps['loadPermit'], analyzePhoto: AppDeps['analyzePhoto'] = async () => guess) {
   const server: Server = await new Promise((resolve) => {
-    const s = createApp({ loadPermit }).listen(0, () => resolve(s));
+    const s = createApp({ loadPermit, analyzePhoto }).listen(0, () => resolve(s));
   });
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  return { get: (path: string) => fetch(base + path), close: () => server.close() };
+  return {
+    get: (path: string) => fetch(base + path),
+    post: (path: string, body: BodyInit, type: string) => fetch(base + path, { method: 'POST', body, headers: { 'Content-Type': type } }),
+    close: () => server.close(),
+  };
 }
+
+describe('POST /api/photo', () => {
+  it('사진 바이트와 형식을 판독기에 넘기고 결과를 돌려준다', async () => {
+    const analyze = vi.fn(async () => guess);
+    const api = await serve(async () => null, analyze);
+    const res = await api.post('/api/photo', new Uint8Array([1, 2, 3]), 'image/png');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(guess);
+    expect(analyze).toHaveBeenCalledWith(Buffer.from([1, 2, 3]), 'image/png');
+    api.close();
+  });
+
+  it('이미지가 아니거나 비어 있으면 400', async () => {
+    const analyze = vi.fn(async () => guess);
+    const api = await serve(async () => null, analyze);
+    expect((await api.post('/api/photo', 'hello', 'text/plain')).status).toBe(400);
+    expect((await api.post('/api/photo', new Uint8Array(), 'image/jpeg')).status).toBe(400);
+    expect(analyze).not.toHaveBeenCalled();
+    api.close();
+  });
+
+  it('판독이 실패하면 502, 오류 내용은 싣지 않는다', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const api = await serve(async () => null, async () => { throw new Error('secret detail'); });
+    const res = await api.post('/api/photo', new Uint8Array([1]), 'image/jpeg');
+    expect(res.status).toBe(502);
+    expect(await res.text()).not.toContain('secret detail');
+    api.close();
+  });
+});
 
 describe('GET /api/permit/:seq', () => {
   it('허가정보가 있으면 found: true', async () => {
