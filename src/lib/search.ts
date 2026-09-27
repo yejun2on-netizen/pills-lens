@@ -8,6 +8,8 @@ export interface PillQuery {
   colors: string[];
   forms: PillForm[];
   lines: ScoreLine[];
+  /** 식별문자 첫 글자 (앞·뒷면 중 하나가 이 글자로 시작). 헷갈리는 글자는 접은 값(O→0, I→1) */
+  initial: string;
   /** 사진 판독처럼 확실하지 않은 조건. 거르지 않고 맞는 알약을 앞으로만 당긴다. */
   prefer?: Preference;
 }
@@ -18,7 +20,7 @@ export interface Preference {
   colors: string[];
 }
 
-export const EMPTY_QUERY: PillQuery = { text: '', shapes: [], colors: [], forms: [], lines: [] };
+export const EMPTY_QUERY: PillQuery = { text: '', shapes: [], colors: [], forms: [], lines: [], initial: '' };
 
 /** 검색용 정규화 값을 미리 계산해 둔 알약. nf/nb: 앞/뒤 식별문자, nn: 제품명 */
 export interface IndexedPill extends Pill {
@@ -44,7 +46,34 @@ export function indexPills(pills: Pill[]): IndexedPill[] {
 }
 
 export function isEmptyQuery(q: PillQuery): boolean {
-  return !q.text.trim() && !q.shapes.length && !q.colors.length && !q.forms.length && !q.lines.length;
+  return !q.text.trim() && !q.shapes.length && !q.colors.length && !q.forms.length && !q.lines.length && !q.initial;
+}
+
+/** 알약의 식별문자 첫 글자들 (앞면·뒷면, 접은 값). 글자가 없는 면은 빠진다. */
+export function initialsOf(p: IndexedPill): string[] {
+  const out: string[] = [];
+  for (const s of [p.nf, p.nb]) if (s && !out.includes(s[0])) out.push(s[0]);
+  return out;
+}
+
+/** 숫자 → 영문 → 한글 → 그 밖의 순서. 알약에 보이는 글자를 빨리 찾게 한다. */
+function initialOrder(c: string): number {
+  if (/[0-9]/.test(c)) return 0;
+  if (/[A-Z]/.test(c)) return 1;
+  if (/[가-힣]/.test(c)) return 2;
+  return 3;
+}
+
+/**
+ * 결과를 첫 글자별로 센다. 앞·뒷면이 서로 다른 글자로 시작하면 두 글자에 모두 센다.
+ * 결과가 많을 때 "첫 글자 하나"만 골라도 평균 1/20로 줄어든다 (원형·하양·정제 5,379개 → 약 270개).
+ */
+export function countInitials(pills: IndexedPill[]): { char: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const p of pills) for (const c of initialsOf(p)) counts.set(c, (counts.get(c) ?? 0) + 1);
+  return [...counts.entries()]
+    .map(([char, count]) => ({ char, count }))
+    .sort((a, b) => initialOrder(a.char) - initialOrder(b.char) || a.char.localeCompare(b.char, 'ko'));
 }
 
 /** 입력한 식별문자를 공백 기준 토큰으로 나눈다. "YH LT" → ["YH", "LT"] */
@@ -114,6 +143,7 @@ function preferencePenalty(p: IndexedPill, pref: Preference): number {
  * - 글자: 앞/뒤 식별문자에 맞거나, 제품명에 들어 있으면 통과 (식별문자 일치가 먼저)
  * - 모양·제형·분할선: 고른 것 중 하나라도 맞으면 통과
  * - 색상: 고른 색을 모두 가진 알약만 (두 가지 색 캡슐을 좁히기 위해)
+ * - 첫 글자: 앞·뒷면 중 하나가 그 글자로 시작하면 통과
  * - prefer(선호): 거르지 않고 순서에만 반영
  */
 export function searchPills(pills: IndexedPill[], q: PillQuery): IndexedPill[] {
@@ -128,6 +158,7 @@ export function searchPills(pills: IndexedPill[], q: PillQuery): IndexedPill[] {
     if (q.forms.length && !q.forms.includes(p.form)) continue;
     if (q.lines.length && !q.lines.includes(p.line)) continue;
     if (q.colors.length && !q.colors.every((c) => p.colors.includes(c))) continue;
+    if (q.initial && !initialsOf(p).includes(q.initial)) continue;
 
     let score = 0;
     if (hasText) {

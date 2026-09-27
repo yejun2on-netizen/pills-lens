@@ -21,18 +21,63 @@ const dataset: PillDataset = {
 };
 
 let photoResponse: () => Response;
+let pillData: PillDataset;
 
 beforeEach(() => {
+  pillData = dataset;
   photoResponse = () => new Response(JSON.stringify({ text: 'DW', shape: '장방형', colors: ['빨강'], form: '경질캡슐', line: '없음' }));
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     if (String(url) === '/api/photo') return photoResponse();
-    return new Response(JSON.stringify(String(url).startsWith('/api/permit/') ? { found: false } : dataset));
+    return new Response(JSON.stringify(String(url).startsWith('/api/permit/') ? { found: false } : pillData));
   }));
   // jsdom에는 사진 미리보기용 URL API가 없다
   URL.createObjectURL = vi.fn(() => 'blob:preview');
   URL.revokeObjectURL = vi.fn();
 });
 afterEach(() => vi.unstubAllGlobals());
+
+describe('App — 첫 글자로 좁히기', () => {
+  // 하양 원형 알약 40개: K로 시작 25개, S로 시작 15개(그중 5개는 뒷면이 K)
+  const many: PillDataset = {
+    updated: '2026-09-27',
+    count: 40,
+    pills: Array.from({ length: 40 }, (_, i) => pill({
+      seq: `p${i}`,
+      name: `알약${String(i).padStart(2, '0')}정`,
+      front: i < 25 ? `K${i}` : `S${i}`,
+      back: i >= 35 ? 'K' : '',
+    })),
+  };
+
+  it('결과가 30개를 넘으면 첫 글자 버튼이 나오고, 고르면 좁혀지고, 지우면 돌아온다', async () => {
+    pillData = many;
+    render(<App />);
+    await screen.findByText('조건을 골라 주세요');
+    const filters = screen.getByRole('region', { name: '알약 검색 조건' });
+    fireEvent.click(within(filters).getByRole('button', { name: /하양/ }));
+
+    const picker = await screen.findByRole('region', { name: '첫 글자로 좁히기' });
+    expect(within(picker).getByRole('button', { name: 'K 30개' })).toBeInTheDocument();
+    expect(within(picker).getByRole('button', { name: 'S 15개' })).toBeInTheDocument();
+
+    fireEvent.click(within(picker).getByRole('button', { name: 'S 15개' }));
+    expect(await screen.findByText('좁힌 첫 글자')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /찾은 알약/ })).toHaveTextContent('찾은 알약 15개');
+
+    fireEvent.click(screen.getByRole('button', { name: '첫 글자 지우기' }));
+    expect(await screen.findByRole('region', { name: '첫 글자로 좁히기' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /찾은 알약/ })).toHaveTextContent('찾은 알약 40개');
+  });
+
+  it('결과가 30개 이하이거나 글자를 넣었으면 나오지 않는다', async () => {
+    pillData = many;
+    render(<App />);
+    await screen.findByText('조건을 골라 주세요');
+    fireEvent.change(screen.getByPlaceholderText(/예: YH/), { target: { value: 'K' } });
+    expect(await screen.findByRole('heading', { name: /찾은 알약/ })).toHaveTextContent('찾은 알약 30개');
+    expect(screen.queryByRole('region', { name: '첫 글자로 좁히기' })).not.toBeInTheDocument();
+  });
+});
 
 function takePhoto(container: HTMLElement) {
   const input = container.querySelector('input[type="file"]')!;

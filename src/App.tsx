@@ -1,9 +1,10 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import type { Pill, PillDataset } from './types';
-import { EMPTY_QUERY, indexPills, isEmptyQuery, queryFromGuess, searchPills, type IndexedPill, type PillQuery } from './lib/search';
+import { EMPTY_QUERY, countInitials, indexPills, isEmptyQuery, queryFromGuess, searchPills, type IndexedPill, type PillQuery } from './lib/search';
 import { analyzePhoto } from './lib/api';
 import { shrinkImage } from './lib/image';
 import { SearchPanel } from './ui/SearchPanel';
+import { InitialPicker } from './ui/InitialPicker';
 import { PhotoSearch, type PhotoState } from './ui/PhotoSearch';
 import { PillCard } from './ui/PillCard';
 import { PillSheet } from './ui/PillSheet';
@@ -45,6 +46,9 @@ export default function App() {
   }, []);
 
   const results = useMemo(() => (data.state === 'ready' ? searchPills(data.pills, deferred) : []), [data, deferred]);
+  // 결과가 한 화면(30개)을 넘고 글자를 아직 안 넣었으면 첫 글자로 좁히게 한다. 고른 뒤에는 되돌릴 수 있게 계속 보인다.
+  const showInitials = !!deferred.initial || (!deferred.text.trim() && results.length > PAGE);
+  const initialCounts = useMemo(() => (showInitials && !deferred.initial ? countInitials(results) : []), [showInitials, deferred.initial, results]);
   useEffect(() => setLimit(PAGE), [deferred]);
 
   const [photo, setPhoto] = useState<PhotoState>({ status: 'idle' });
@@ -129,6 +133,10 @@ export default function App() {
           )}
           {data.state === 'ready' && !empty && results.length === 0 && (
             <p className="hint">조건에 맞는 알약이 없어요. 색은 비슷한 색(하양·회색, 노랑·주황 등)으로 바꿔 보거나 조건을 줄여 보세요.</p>
+          )}
+
+          {showInitials && (
+            <InitialPicker counts={initialCounts} selected={deferred.initial} onSelect={(initial) => setQuery({ ...query, initial })} />
           )}
 
           <div className="pcards">

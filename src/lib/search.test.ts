@@ -1,5 +1,5 @@
 import type { PhotoGuess, Pill } from '../types';
-import { indexPills, searchPills, imprintTokens, queryFromGuess, EMPTY_QUERY } from './search';
+import { indexPills, searchPills, imprintTokens, queryFromGuess, countInitials, isEmptyQuery, EMPTY_QUERY } from './search';
 
 function pill(over: Partial<Pill>): Pill {
   return {
@@ -145,6 +145,41 @@ describe('searchPills — 선호 조건(prefer)', () => {
 
   it('비슷한 모양(장방형↔타원형)은 다른 모양보다 앞선다', () => {
     expect(find({ shapes: ['장방형'] })).toEqual(['to', 'mo', 'su']);
+  });
+});
+
+describe('첫 글자 (initial)', () => {
+  const list = indexPills([
+    pill({ seq: 'a', name: '가정', front: 'KD', back: '10' }),
+    pill({ seq: 'b', name: '나정', front: 'SJ', back: 'K5' }),
+    pill({ seq: 'c', name: '다정', front: 'ORT', back: '' }),
+    pill({ seq: 'd', name: '라정', front: '마크', back: '경동' }),
+    pill({ seq: 'e', name: '마정', front: '', back: '' }),
+  ]);
+  const find = (initial: string) => searchPills(list, { ...EMPTY_QUERY, initial }).map((p) => p.seq);
+
+  it('앞·뒷면 중 하나라도 그 글자로 시작하면 통과한다', () => {
+    expect(find('K')).toEqual(['a', 'b']);
+    expect(find('1')).toEqual(['a']);
+  });
+
+  it('O는 0으로, 마크 표기는 빼고 첫 글자를 본다', () => {
+    expect(find('0')).toEqual(['c']);
+    expect(find('경')).toEqual(['d']);
+  });
+
+  it('첫 글자별 개수를 숫자 → 영문 → 한글 순으로 센다 (글자 없는 알약은 빠짐)', () => {
+    expect(countInitials(list)).toEqual([
+      { char: '0', count: 1 },
+      { char: '1', count: 1 },
+      { char: 'K', count: 2 },
+      { char: 'S', count: 1 },
+      { char: '경', count: 1 },
+    ]);
+  });
+
+  it('첫 글자만 골라도 검색 조건이 된다', () => {
+    expect(isEmptyQuery({ ...EMPTY_QUERY, initial: 'K' })).toBe(false);
   });
 });
 
